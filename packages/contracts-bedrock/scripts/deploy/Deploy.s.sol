@@ -23,6 +23,7 @@ import { LibStateDiff } from "scripts/libraries/LibStateDiff.sol";
 import { Process } from "scripts/libraries/Process.sol";
 import { ForgeArtifacts } from "scripts/libraries/ForgeArtifacts.sol";
 import { ChainAssertions } from "scripts/deploy/ChainAssertions.sol";
+import { DeployUtils } from "scripts/libraries/DeployUtils.sol";
 
 // Contracts
 import { ProxyAdmin } from "src/universal/ProxyAdmin.sol";
@@ -665,7 +666,14 @@ contract Deploy is Deployer {
 
     /// @notice Deploy the SuperchainConfig contract
     function deploySuperchainConfig() public broadcast {
-        ISuperchainConfig superchainConfig = ISuperchainConfig(_deploy("SuperchainConfig", hex""));
+        ISuperchainConfig superchainConfig = ISuperchainConfig(
+            DeployUtils.create2AndSave({
+                _save: this,
+                _name: "SuperchainConfig",
+                _args: abi.encodeCall(ISuperchainConfig.__constructor__, ()),
+                _salt: _implSalt()
+            })
+        );
 
         require(superchainConfig.guardian() == address(0));
         bytes32 initialized = vm.load(address(superchainConfig), bytes32(0));

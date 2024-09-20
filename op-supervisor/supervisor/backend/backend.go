@@ -190,7 +190,7 @@ func (su *SupervisorBackend) CheckMessage(identifier types.Identifier, payloadHa
 	chainID := identifier.ChainID
 	blockNum := identifier.BlockNumber
 	logIdx := identifier.LogIndex
-	i, err := su.db.Check(chainID, blockNum, uint32(logIdx), backendTypes.TruncateHash(payloadHash))
+	_, err := su.db.Check(chainID, blockNum, uint32(logIdx), backendTypes.TruncateHash(payloadHash))
 	if errors.Is(err, logs.ErrFuture) {
 		return types.Unsafe, nil
 	}
@@ -207,7 +207,8 @@ func (su *SupervisorBackend) CheckMessage(identifier types.Identifier, payloadHa
 		db.NewSafetyChecker(types.Safe, su.db),
 		db.NewSafetyChecker(types.Finalized, su.db),
 	} {
-		if i <= checker.CrossHeadForChain(chainID) {
+		headPtr := checker.CrossHeadForChain(chainID)
+		if headPtr.WithinRange(blockNum, uint32(logIdx)) {
 			safest = checker.SafetyLevel()
 		}
 	}
@@ -239,7 +240,7 @@ func (su *SupervisorBackend) CheckBlock(chainID *hexutil.U256, blockHash common.
 	safest := types.CrossUnsafe
 	// find the last log index in the block
 	id := eth.BlockID{Hash: blockHash, Number: uint64(blockNumber)}
-	i, err := su.db.FindSealedBlock(types.ChainID(*chainID), id)
+	_, err := su.db.FindSealedBlock(types.ChainID(*chainID), id)
 	if errors.Is(err, logs.ErrFuture) {
 		return types.Unsafe, nil
 	}
@@ -256,7 +257,8 @@ func (su *SupervisorBackend) CheckBlock(chainID *hexutil.U256, blockHash common.
 		db.NewSafetyChecker(types.Safe, su.db),
 		db.NewSafetyChecker(types.Finalized, su.db),
 	} {
-		if i <= checker.CrossHeadForChain(types.ChainID(*chainID)) {
+		headPtr := checker.CrossHeadForChain(types.ChainID(*chainID))
+		if headPtr.IsSealed(uint64(blockNumber)) {
 			safest = checker.SafetyLevel()
 		}
 	}

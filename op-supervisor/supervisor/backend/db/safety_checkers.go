@@ -2,7 +2,7 @@ package db
 
 import (
 	"errors"
-	"github.com/ethereum-optimism/optimism/op-supervisor/supervisor/backend/db/entrydb"
+
 	"github.com/ethereum-optimism/optimism/op-supervisor/supervisor/backend/db/heads"
 	"github.com/ethereum-optimism/optimism/op-supervisor/supervisor/backend/db/logs"
 	backendTypes "github.com/ethereum-optimism/optimism/op-supervisor/supervisor/backend/types"
@@ -18,10 +18,10 @@ const (
 // SafetyChecker is an interface for checking the safety of a log entry
 // and updating the local head for a chain.
 type SafetyChecker interface {
-	LocalHeadForChain(chainID types.ChainID) entrydb.EntryIdx
-	CrossHeadForChain(chainID types.ChainID) entrydb.EntryIdx
-	Check(chain types.ChainID, blockNum uint64, logIdx uint32, logHash backendTypes.TruncatedHash) bool
-	Update(chain types.ChainID, index entrydb.EntryIdx) heads.OperationFn
+	LocalHeadForChain(chainID types.ChainID) heads.HeadPointer
+	CrossHeadForChain(chainID types.ChainID) heads.HeadPointer
+	Check(chain types.ChainID, blockNum uint64, logIdx uint32, logHash backendTypes.TruncatedHash) error
+	Update(chain types.ChainID, pointer heads.HeadPointer) error
 	Name() string
 	SafetyLevel() types.SafetyLevel
 }
@@ -76,36 +76,30 @@ func (c *finalizedChecker) Name() string {
 
 // LocalHeadForChain returns the local head for the given chain
 // based on the type of SafetyChecker
-func (c *unsafeChecker) LocalHeadForChain(chainID types.ChainID) entrydb.EntryIdx {
-	heads := c.chainsDB.heads.Current().Get(chainID)
-	return heads.Unsafe
+func (c *unsafeChecker) LocalHeadForChain(chainID types.ChainID) heads.HeadPointer {
+	return c.chainsDB.heads.LocalUnsafe(chainID)
 }
 
-func (c *safeChecker) LocalHeadForChain(chainID types.ChainID) entrydb.EntryIdx {
-	heads := c.chainsDB.heads.Current().Get(chainID)
-	return heads.LocalSafe
+func (c *safeChecker) LocalHeadForChain(chainID types.ChainID) heads.HeadPointer {
+	return c.chainsDB.heads.LocalSafe(chainID)
 }
 
-func (c *finalizedChecker) LocalHeadForChain(chainID types.ChainID) entrydb.EntryIdx {
-	heads := c.chainsDB.heads.Current().Get(chainID)
-	return heads.LocalFinalized
+func (c *finalizedChecker) LocalHeadForChain(chainID types.ChainID) heads.HeadPointer {
+	return c.chainsDB.heads.LocalFinalized(chainID)
 }
 
 // CrossHeadForChain returns the x-head for the given chain
 // based on the type of SafetyChecker
-func (c *unsafeChecker) CrossHeadForChain(chainID types.ChainID) entrydb.EntryIdx {
-	heads := c.chainsDB.heads.Current().Get(chainID)
-	return heads.CrossUnsafe
+func (c *unsafeChecker) CrossHeadForChain(chainID types.ChainID) heads.HeadPointer {
+	return c.chainsDB.heads.CrossUnsafe(chainID)
 }
 
-func (c *safeChecker) CrossHeadForChain(chainID types.ChainID) entrydb.EntryIdx {
-	heads := c.chainsDB.heads.Current().Get(chainID)
-	return heads.CrossSafe
+func (c *safeChecker) CrossHeadForChain(chainID types.ChainID) heads.HeadPointer {
+	return c.chainsDB.heads.CrossSafe(chainID)
 }
 
-func (c *finalizedChecker) CrossHeadForChain(chainID types.ChainID) entrydb.EntryIdx {
-	heads := c.chainsDB.heads.Current().Get(chainID)
-	return heads.CrossFinalized
+func (c *finalizedChecker) CrossHeadForChain(chainID types.ChainID) heads.HeadPointer {
+	return c.chainsDB.heads.CrossFinalized(chainID)
 }
 
 func (c *unsafeChecker) SafetyLevel() types.SafetyLevel {
@@ -124,7 +118,7 @@ func (c *finalizedChecker) SafetyLevel() types.SafetyLevel {
 // it is used by the individual SafetyCheckers to determine if a log entry is safe
 func check(
 	chainsDB *ChainsDB,
-	localHead entrydb.EntryIdx,
+	localHead heads.HeadPointer,
 	chain types.ChainID,
 	blockNum uint64,
 	logIdx uint32,
@@ -134,7 +128,7 @@ func check(
 	// exist at the blockNum and logIdx
 	// have a hash that matches the provided hash (implicit in the Contains call), and
 	// be less than or equal to the local head for the chain
-	index, err := chainsDB.logDBs[chain].Contains(blockNum, logIdx, logHash)
+	_, err := chainsDB.logDBs[chain].Contains(blockNum, logIdx, logHash)
 	if err != nil {
 		if errors.Is(err, logs.ErrFuture) {
 			return false // TODO
@@ -144,7 +138,7 @@ func check(
 		}
 		return false
 	}
-	return index <= localHead
+	return localHead.WithinRange(blockNum, logIdx)
 }
 
 // Check checks if the log entry is safe, provided a local head for the chain
@@ -159,30 +153,14 @@ func (c *finalizedChecker) Check(chain types.ChainID, blockNum uint64, logIdx ui
 	return check(c.chainsDB, c.LocalHeadForChain(chain), chain, blockNum, logIdx, logHash)
 }
 
-// Update creates an Operation that updates the x-head for the chain, given an index to set it to
-func (c *unsafeChecker) Update(chain types.ChainID, index entrydb.EntryIdx) heads.OperationFn {
-	return func(heads *heads.Heads) error {
-		chainHeads := heads.Get(chain)
-		chainHeads.CrossUnsafe = index
-		heads.Put(chain, chainHeads)
-		return nil
-	}
+func (c *unsafeChecker) Update(chain types.ChainID, pointer heads.HeadPointer) error {
+	return c.chainsDB.heads.UpdateCrossUnsafe(chain, pointer)
 }
 
-func (c *safeChecker) Update(chain types.ChainID, index entrydb.EntryIdx) heads.OperationFn {
-	return func(heads *heads.Heads) error {
-		chainHeads := heads.Get(chain)
-		chainHeads.CrossSafe = index
-		heads.Put(chain, chainHeads)
-		return nil
-	}
+func (c *safeChecker) Update(chain types.ChainID, pointer heads.HeadPointer) error {
+	return c.chainsDB.heads.UpdateCrossSafe(chain, pointer)
 }
 
-func (c *finalizedChecker) Update(chain types.ChainID, index entrydb.EntryIdx) heads.OperationFn {
-	return func(heads *heads.Heads) error {
-		chainHeads := heads.Get(chain)
-		chainHeads.CrossFinalized = index
-		heads.Put(chain, chainHeads)
-		return nil
-	}
+func (c *finalizedChecker) Update(chain types.ChainID, pointer heads.HeadPointer) error {
+	return c.chainsDB.heads.UpdateCrossFinalized(chain, pointer)
 }

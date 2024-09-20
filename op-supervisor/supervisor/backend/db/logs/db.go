@@ -149,15 +149,10 @@ func (db *DB) updateEntryCountMetric() {
 	db.m.RecordDBEntryCount(db.store.Size())
 }
 
-func (db *DB) IteratorStartingAt(i entrydb.EntryIdx) (Iterator, error) {
+func (db *DB) IteratorStartingAt(sealedNum uint64, logIndex uint32) (Iterator, error) {
 	db.rwLock.RLock()
 	defer db.rwLock.RUnlock()
-	if i > db.lastEntryContext.nextEntryIndex {
-		return nil, ErrFuture
-	}
-	// TODO this iterator is semi-broken;
-	//  inferred entries will not be added if starting from an incomplete block or log
-	return db.newIterator(i), nil
+	return db.newIteratorAt(sealedNum, logIndex)
 }
 
 // FindSealedBlock finds the requested block, to check if it exists,

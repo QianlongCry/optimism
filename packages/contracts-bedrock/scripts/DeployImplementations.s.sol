@@ -483,9 +483,9 @@ contract DeployImplementations is Script {
     function createOPSMContract(
         DeployImplementationsInput _dii,
         DeployImplementationsOutput _dio,
-        OPStackManager.Blueprints memory blueprints,
-        string memory release,
-        OPStackManager.ImplementationSetter[] memory setters
+        OPStackManager.Blueprints memory _blueprints,
+        string memory _release,
+        OPStackManager.ImplementationSetter[] memory _setters
     )
         internal
         virtual
@@ -500,7 +500,7 @@ contract DeployImplementations is Script {
         OPStackManager opsmImpl = _dio.opsmImpl();
 
         OPStackManager.InitializerInputs memory initializerInputs =
-            OPStackManager.InitializerInputs(blueprints, setters, release, true);
+            OPStackManager.InitializerInputs(_blueprints, _setters, _release, true);
         proxy.upgradeToAndCall(
             address(opsmImpl), abi.encodeWithSelector(opsmImpl.initialize.selector, initializerInputs)
         );
@@ -881,23 +881,23 @@ contract DeployImplementations is Script {
 
     // Zero address is returned if the address is not found.
     function getReleaseAddress(
-        string memory version,
-        string memory contractName
+        string memory _version,
+        string memory _contractName
     )
         internal
         view
         returns (address addr)
     {
         string memory file = "/lib/superchain-registry/validation/standard/standard-versions.toml";
-        try vm.readFile(string.concat(vm.projectRoot(), file)) returns (string memory toml) {
-            string memory baseKey = string.concat('.releases["', version, '"].', contractName);
+        try vm.readFile(string.concat(vm.projectRoot(), file)) returns (string memory _toml) {
+            string memory baseKey = string.concat('.releases["', _version, '"].', _contractName);
             string memory implAddressKey = string.concat(baseKey, ".implementation_address");
             string memory addressKey = string.concat(baseKey, ".address");
-            try vm.parseTomlAddress(toml, implAddressKey) returns (address parsedAddr) {
-                addr = parsedAddr;
+            try vm.parseTomlAddress(_toml, implAddressKey) returns (address _parsedAddr) {
+                addr = _parsedAddr;
             } catch {
-                try vm.parseTomlAddress(toml, addressKey) returns (address parsedAddr) {
-                    addr = parsedAddr;
+                try vm.parseTomlAddress(_toml, addressKey) returns (address _parsedAddr) {
+                    addr = _parsedAddr;
                 } catch {
                     addr = address(0);
                 }
@@ -908,8 +908,8 @@ contract DeployImplementations is Script {
     }
 
     // A release is considered a 'develop' release if it does not start with 'op-contracts'.
-    function isDevelopRelease(string memory release) internal pure returns (bool) {
-        return !LibString.startsWith(release, "op-contracts");
+    function isDevelopRelease(string memory _release) internal pure returns (bool) {
+        return !LibString.startsWith(_release, "op-contracts");
     }
 }
 

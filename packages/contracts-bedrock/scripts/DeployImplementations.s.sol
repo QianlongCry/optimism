@@ -2,9 +2,6 @@
 pragma solidity 0.8.15;
 
 import { Script } from "forge-std/Script.sol";
-import { stdToml } from "forge-std/StdToml.sol";
-import { stdJson } from "forge-std/StdJson.sol";
-import "forge-std/Console.sol";
 
 import { LibString } from "@solady/utils/LibString.sol";
 
@@ -797,8 +794,6 @@ contract DeployImplementations is Script {
         PreimageOracle singleton;
 
         address existingImplementation = getReleaseAddress(release, contractName);
-        console.log("Preimage oracle here bro");
-        console.logAddress(existingImplementation);
         if (existingImplementation != address(0)) {
             singleton = PreimageOracle(payable(existingImplementation));
         } else if (isDevelopRelease(release)) {
